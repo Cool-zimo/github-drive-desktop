@@ -5,7 +5,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node test_permissions.mjs && node test_handlers.mjs",
+    "test": "node test_permissions.mjs && node test_handlers.mjs && node test_trust.mjs",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
@@ -18,8 +18,14 @@
   "build": {
     "appId": "io.coolzimo.githubdrive",
     "productName": "GitHub Drive",
-    "win": { "target": "nsis" },
-    "mac": { "target": "dmg" },
-    "linux": { "target": "AppImage" }
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }
