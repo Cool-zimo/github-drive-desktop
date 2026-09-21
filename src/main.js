@@ -17,6 +17,7 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 
 const { GrantStore, normalize, info, ALL } = require('./permissions.js');
+const { decideInstall, DISCLAIMER, DISCLAIMER_VERSION } = require('./trust.js');
 const { Handlers } = require('./handlers.js');
 
 const execAsync = promisify(exec);
@@ -141,20 +142,61 @@ ipcMain.handle('native:granted', (event) => {
     return grants.granted(pluginIdFrom(event));
 });
 
-/** 安装插件 —— 弹窗列出权限，用户确认后才写入 */
+/**
+ * 安装插件
+ *
+ * 分三种情况：
+ *   · 官方来源（本人维护的仓库）→ 按声明全量授权，不弹窗
+ *   · 第三方 → 先弹免责声明（每个版本只弹一次），再弹权限框
+ *   · 缺 id → 直接报错
+ *
+ * ★ 自动授信 ≠ 取消校验。GrantStore.check 依然在运行时拦截，
+ *   防止插件被冒充身份调用已授权的能力。
+ */
 ipcMain.handle('native:install', async (event, plugin) => {
     const id = String((plugin && plugin.id) || '').trim();
-    if (!id) return { ok: false, error: '插件缺少 id' };
+    const route = decideInstall(plugin);
+
+    if (route.mode === 'error') return { ok: false, error: route.reason };
 
     const { perms, unknown } = normalize(plugin && plugin.permissions);
 
-    // 无权限声明 = 纯前端插件，直接装
+    // 纯前端插件（不申请任何权限）—— 不用弹任何框
     if (perms.length === 0) {
         grants.grant(id, []);
         saveGrants();
-        return { ok: true, granted: [] };
+        return { ok: true, granted: [], official: route.mode === 'auto' };
     }
 
+    const official = route.mode === 'auto';
+
+    // ── 第三方：一次性免责声明 ──────────────────────────
+    if (!official) {
+        const ack = acknowledgedDisclaimer();
+        if (!ack) {
+            const r = await dialog.showMessageBox(win, {
+                type: 'warning',
+                buttons: ['我已了解风险', '取消安装'],
+                defaultId: 1,
+                cancelId: 1,
+                title: '第三方插件风险提示',
+                message: '你正在安装第三方插件',
+                detail: DISCLAIMER
+            });
+            if (r.response !== 0) return { ok: false, cancelled: true };
+            markDisclaimer();
+        }
+    }
+
+    // ── 官方插件：直接授信，不打扰 ──────────────────────
+    if (official) {
+        grants.grant(id, perms);
+        saveGrants();
+        if (win) win.webContents.send('native:grants-changed', grants.toJSON());
+        return { ok: true, granted: perms, official: true, auto: true };
+    }
+
+    // ── 第三方：逐项列出权限 ────────────────────────────
     const lines = perms.map(p => {
         const i = info(p);
         const mark = i.risk === 'critical' ? '⛔' : (i.risk === 'high' ? '⚠️' : '·');
@@ -180,8 +222,32 @@ ipcMain.handle('native:install', async (event, plugin) => {
     grants.grant(id, perms);
     saveGrants();
     if (win) win.webContents.send('native:grants-changed', grants.toJSON());
-    return { ok: true, granted: perms };
+    return { ok: true, granted: perms, official: false };
 });
+
+/** 免责声明是否已确认过（按版本号记，改文案会重新弹） */
+function disclaimerKeyPath() {
+    return path.join(app.getPath('userData'), 'disclaimer.json');
+}
+function acknowledgedDisclaimer() {
+    try {
+        const p = disclaimerKeyPath();
+        if (!fs.existsSync(p)) return false;
+        const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+        return Number(d && d.version) === DISCLAIMER_VERSION;
+    } catch (e) {
+        return false;
+    }
+}
+function markDisclaimer() {
+    try {
+        fs.mkdirSync(path.dirname(disclaimerKeyPath()), { recursive: true });
+        fs.writeFileSync(disclaimerKeyPath(),
+            JSON.stringify({ version: DISCLAIMER_VERSION, at: new Date().toISOString() }), 'utf8');
+    } catch (e) {
+        console.error('[disclaimer] 写入失败：', e.message);
+    }
+}
 
 ipcMain.handle('native:revoke', async (event, pluginId) => {
     grants.revoke(String(pluginId || ''));
