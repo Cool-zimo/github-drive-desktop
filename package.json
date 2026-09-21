@@ -1,0 +1,25 @@
+{
+  "name": "github-drive-desktop",
+  "version": "1.0.0",
+  "description": "GitHub Drive 桌面版 —— 让插件能读写本地文件、运行命令",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test_permissions.mjs && node test_handlers.mjs",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "author": "Cool-zimo",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "io.coolzimo.githubdrive",
+    "productName": "GitHub Drive",
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
+  }
+}
