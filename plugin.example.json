@@ -1,0 +1,9 @@
+{
+  "id": "local-sync",
+  "name": "本地同步示例",
+  "file": "index.html",
+  "version": "1.0.0",
+  "author": "Cool-zimo",
+  "description": "把网盘文件同步到本地目录，并用本地工具处理",
+  "permissions": ["fs:read", "fs:write", "fs:list", "exec"]
+}
